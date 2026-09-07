@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal TODO</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --screen-bg: #0c0c0c;
+            --text: #33ff33;
+            --text-bright: #66ff66;
+            --text-dim: #1a8c1a;
+            --error: #ff5544;
+            --warn: #ffaa33;
+            --info: #33ccff;
+            --cursor: #33ff33;
+            --bezel: #1a1a1a;
+            --bezel-inner: #111111;
+            --scan-line-opacity: 0.03;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #050505;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', 'Fira Code', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+            padding: 20px;
+            background-image:
+                radial-gradient(ellipse at center, #0d0d0d 0%, #020202 100%);
+        }
+
+        /* CRT Monitor Bezel */
+        .monitor {
+            background: var(--bezel);
+            border-radius: 18px;
+            padding: 28px 22px 22px 22px;
+            box-shadow:
+                0 0 0 3px #1f1f1f,
+                0 0 0 7px #161616,
+                0 0 0 10px #111,
+                0 15px 50px rgba(0, 0, 0, 0.7),
+                0 5px 20px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.02);
+            position: relative;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        /* Screen area */
+        .screen {
+            background: var(--screen-bg);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            box-shadow:
+                inset 0 0 80px rgba(0, 0, 0, 0.6),
+                inset 0 0 20px rgba(0, 0, 0, 0.4),
+                0 0 0 2px #0d0d0d;
+            height: 560px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Scan lines overlay */
+        .screen::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(0deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(0, 0, 0, var(--scan-line-opacity)) 2px,
+                    rgba(0, 0, 0, var(--scan-line-opacity)) 4px);
+            pointer-events: none;
+            z-index: 10;
+            border-radius: 8px;
+        }
+
+        /* Subtle screen flicker */
+        .screen::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: transparent;
+            pointer-events: none;
+            z-index: 9;
+            border-radius: 8px;
+            animation: flicker 0.15s infinite;
+            opacity: 0;
+        }
+
+        @keyframes flicker {
+            0%,
+            100% {
+                opacity: 0;
+            }
+            5% {
+                opacity: 0.015;
+            }
+            10% {
+                opacity: 0;
+            }
+            15% {
+                opacity: 0.01;
+            }
+            20% {
+                opacity: 0;
+            }
+            50% {
+                opacity: 0.005;
+            }
+            80% {
+                opacity: 0;
+            }
+            92% {
+                opacity: 0.02;
+            }
+            95% {
+                opacity: 0;
+            }
+        }
+
+        /* Terminal output area */
+        .output-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 18px 8px 18px;
+            position: relative;
+            z-index: 5;
+            scroll-behavior: smooth;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .output-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        .output-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .output-area::-webkit-scrollbar-thumb {
+            background: #1a3a1a;
+            border-radius: 3px;
+        }
+        .output-area::-webkit-scrollbar-thumb:hover {
+            background: #2a5a2a;
+        }
+
+        /* Output lines */
+        .line {
+            font-size: 14px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+            min-height: 1.3em;
+            letter-spacing: 0.02em;
+        }
+        .line.cmd {
+            color: var(--text-dim);
+            text-shadow: 0 0 3px rgba(50, 255, 50, 0.2);
+        }
+        .line.output {
+            color: var(--text);
+            text-shadow: 0 0 6px rgba(50, 255, 50, 0.35), 0 0 12px rgba(50, 255, 50, 0.15);
+        }
+        .line.success {
+            color: var(--text-bright);
+            text-shadow: 0 0 8px rgba(80, 255, 80, 0.5), 0 0 16px rgba(80, 255, 80, 0.2);
+        }
+        .line.error {
+            color: var(--error);
+            text-shadow: 0 0 6px rgba(255, 80, 60, 0.4);
+        }
+        .line.warn {
+            color: var(--warn);
+            text-shadow: 0 0 6px rgba(255, 170, 50, 0.35);
+        }
+        .line.info {
+            color: var(--info);
+            text-shadow: 0 0 6px rgba(50, 200, 255, 0.3);
+        }
+        .line.dim {
+            color: var(--text-dim);
+            text-shadow: 0 0 2px rgba(30, 140, 30, 0.2);
+            text-decoration: line-through;
+            text-decoration-color: rgba(50, 255, 50, 0.25);
+            text-decoration-thickness: 1px;
+        }
+        .line.header {
+            color: var(--text-bright);
+            text-shadow: 0 0 10px rgba(80, 255, 80, 0.55), 0 0 20px rgba(80, 255, 80, 0.2);
+            font-weight: bold;
+        }
+        .line.separator {
+            color: var(--text-dim);
+            text-shadow: 0 0 3px rgba(50, 255, 50, 0.15);
+            letter-spacing: 0.1em;
+        }
+
+        /* Input area */
+        .input-area {
+            display: flex;
+            align-items: center;
+            padding: 8px 18px 14px 18px;
+            position: relative;
+            z-index: 5;
+            border-top: 1px solid rgba(50, 255, 50, 0.08);
+            background: rgba(0, 0, 0, 0.2);
+            gap: 0;
+            flex-shrink: 0;
+        }
+
+        .prompt {
+            color: var(--text-bright);
+            font-size: 14px;
+            text-shadow: 0 0 8px rgba(80, 255, 80, 0.5), 0 0 16px rgba(80, 255, 80, 0.2);
+            white-space: nowrap;
+            letter-spacing: 0.02em;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .input-field {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 14px;
+            caret-color: var(--cursor);
+            letter-spacing: 0.02em;
+            text-shadow: 0 0 6px rgba(50, 255, 50, 0.35);
+            min-width: 50px;
+            padding: 0;
+            margin-left: 2px;
+        }
+        .input-field::placeholder {
+            color: rgba(50, 255, 50, 0.15);
+            text-shadow: none;
+        }
+
+        /* Blinking cursor indicator (fallback for browsers) */
+        .cursor-indicator {
+            display: inline-block;
+            width: 9px;
+            height: 16px;
+            background: var(--cursor);
+            margin-left: 1px;
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            box-shadow: 0 0 8px rgba(50, 255, 50, 0.7);
+            flex-shrink: 0;
+        }
+        @keyframes blink {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* Power LED */
+        .power-led {
+            position: absolute;
+            bottom: 8px;
+            right: 28px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #33ff33;
+            box-shadow: 0 0 6px #33ff33, 0 0 14px #33ff33;
+            z-index: 20;
+            animation: led-pulse 3s ease-in-out infinite;
+        }
+        @keyframes led-pulse {
+            0%,
+            100% {
+                box-shadow: 0 0 6px #33ff33, 0 0 14px #33ff33;
+            }
+            50% {
+                box-shadow: 0 0 4px #33ff33, 0 0 8px #33ff33;
+            }
+        }
+
+        /* Brand label on bezel */
+        .brand-label {
+            text-align: center;
+            color: #2a2a2a;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            padding-bottom: 10px;
+            user-select: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .monitor {
+                padding: 16px 10px 10px 10px;
+                border-radius: 12px;
+            }
+            .screen {
+                height: 420px;
+                border-radius: 5px;
+            }
+            .screen::after {
+                border-radius: 5px;
+            }
+            .screen::before {
+                border-radius: 5px;
+            }
+            .line {
+                font-size: 12px;
+                line-height: 1.45;
+            }
+            .prompt {
+                font-size: 12px;
+            }
+            .input-field {
+                font-size: 12px;
+            }
+            .output-area {
+                padding: 10px 12px 6px 12px;
+            }
+            .input-area {
+                padding: 6px 12px 10px 12px;
+            }
+            .brand-label {
+                font-size: 8px;
+                padding-bottom: 6px;
+            }
+            .power-led {
+                bottom: 5px;
+                right: 18px;
+                width: 4px;
+                height: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="monitor">
+        <div class="brand-label">Terminal v2.0</div>
+        <div class="screen" id="screen">
+            <div class="output-area" id="outputArea"></div>
+            <div class="input-area">
+                <span class="prompt">[user@todo ~]$&nbsp;</span>
+                <input
+                type="text"
+                class="input-field"
+                id="inputField"
+                placeholder="type 'help' to begin..."
+                autofocus
+                autocomplete="off"
+                spellcheck="false"
+                >
+                <span class="cursor-indicator" id="cursorIndicator"></span>
+            </div>
+            <div class="power-led"></div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // DOM Elements
+            const outputArea = document.getElementById('outputArea');
+            const inputField = document.getElementById('inputField');
+            const cursorIndicator = document.getElementById('cursorIndicator');
+            const screen = document.getElementById('screen');
+
+            // Task Store (with localStorage)
+            const STORAGE_KEY = 'terminal-todo-tasks-v2';
+            let tasks = [];
+            let taskIdCounter = 0;
+            let currentFilter = 'all'; // 'all' | 'active' | 'done'
+            let currentSort = 'id'; // 'id' | 'priority' | 'date'
+
+            function loadTasks() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (raw) {
+                        const data = JSON.parse(raw);
+                        tasks = data.tasks || [];
+                        taskIdCounter = data.taskIdCounter || 0;
+                    }
+                } catch (e) {
+                    tasks = [];
+                    taskIdCounter = 0;
+                }
+            }
+
+            function saveTasks() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        tasks: tasks,
+                        taskIdCounter: taskIdCounter,
+                    }));
+                } catch (e) {
+                    // Storage full or unavailable
+                }
+            }
+
+            function getNextId() {
+                return ++taskIdCounter;
+            }
+
+            function getDisplayList() {
+                let list = [...tasks];
+
+                // Filter
+                if (currentFilter === 'active') {
+                    list = list.filter(t => !t.completed);
+                } else if (currentFilter === 'done') {
+                    list = list.filter(t => t.completed);
+                }
+
+                // Sort
+                if (currentSort === 'priority') {
+                    const prioOrder = { 'high': 0, 'medium': 1, 'low': 2, 'none': 3 };
+                    list.sort((a, b) => (prioOrder[a.priority] || 3) - (prioOrder[b.priority] || 3));
+                } else if (currentSort === 'date') {
+                    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                } else {
+                    // Default: by id (creation order)
+                    list.sort((a, b) => a.id - b.id);
+                }
+
+                return list;
+            }
+
+            function getTaskByDisplayId(displayId) {
+                const list = getDisplayList();
+                const index = displayId - 1;
+                if (index >= 0 && index < list.length) {
+                    return list[index];
+                }
+                return null;
+            }
+
+            function getTaskIndexInFullList(taskId) {
+                return tasks.findIndex(t => t.id === taskId);
+            }
+
+            // Command History
+            const commandHistory = [];
+            let historyIndex = -1;
+            const MAX_HISTORY = 100;
+
+            // Output Rendering
+            function appendLine(text, className = 'output') {
+                const div = document.createElement('div');
+                div.className = `line ${className}`;
+                div.textContent = text;
+                outputArea.appendChild(div);
+                scrollToBottom();
+            }
+
+            function appendHTML(html, className = 'output') {
+                const div = document.createElement('div');
+                div.className = `line ${className}`;
+                div.innerHTML = html;
+                outputArea.appendChild(div);
+                scrollToBottom();
+            }
+
+            function appendEmptyLine() {
+                const div = document.createElement('div');
+                div.className = 'line output';
+                div.innerHTML = '&nbsp;';
+                outputArea.appendChild(div);
+                scrollToBottom();
+            }
+
+            function scrollToBottom() {
+                requestAnimationFrame(() => {
+                    outputArea.scrollTop = outputArea.scrollHeight;
+                });
+            }
+
+            function clearOutput() {
+                outputArea.innerHTML = '';
+            }
+
+            // Welcome Screen
+            function showWelcome() {
+                const welcomeLines = [
+                    { text: '╔══════════════════════════════════════════════════╗', className: 'header' },
+                    { text: '║                                                  ║', className: 'header' },
+                    { text: '║   ████████╗ ██████╗ ██████╗  ██████╗             ║', className: 'header' },
+                    { text: '║   ╚══██╔══╝██╔═══██╗██╔══██╗██╔═══██╗            ║', className: 'header' },
+                    { text: '║      ██║   ██║   ██║██║  ██║██║   ██║            ║', className: 'header' },
+                    { text: '║      ██║   ██║   ██║██║  ██║██║   ██║            ║', className: 'header' },
+                    { text: '║      ██║   ╚██████╔╝██████╔╝╚██████╔╝            ║', className: 'header' },
+                    { text: '║      ╚═╝    ╚═════╝ ╚═════╝  ╚═════╝             ║', className: 'header' },
+                    { text: '║                                                  ║', className: 'header' },
+                    { text: '║           T E R M I N A L   T O D O   v2.0        ║', className: 'header' },
+                    { text: '║                                                  ║', className: 'header' },
+                    { text: '╚══════════════════════════════════════════════════╝', className: 'header' },
+                    { text: '', className: 'output' },
+                    { text: '  Welcome! Type "help" to see available commands.', className: 'success' },
+                    { text: '  Start by adding a task:  add Buy groceries', className: 'info' },
+                    { text: '', className: 'output' },
+                ];
+
+                welcomeLines.forEach(l => appendLine(l.text, l.className));
+            }
+
+            // Command Processing
+            function parseCommand(input) {
+                const trimmed = input.trim();
+                if (!trimmed) return { command: '', args: [] };
+
+                // Handle quoted strings
+                const parts = [];
+                let current = '';
+                let inQuote = false;
+                let quoteChar = '';
+
+                for (let i = 0; i < trimmed.length; i++) {
+                    const char = trimmed[i];
+                    if ((char === '"' || char === "'") && !inQuote) {
+                        inQuote = true;
+                        quoteChar = char;
+                    } else if (char === quoteChar && inQuote) {
+                        inQuote = false;
+                        quoteChar = '';
+                    } else if (char === ' ' && !inQuote) {
+                        if (current) parts.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                if (current) parts.push(current);
+
+                const command = parts[0]?.toLowerCase() || '';
+                const args = parts.slice(1);
+                return { command, args };
+            }
+
+            function processCommand(input) {
+                const { command, args } = parseCommand(input);
+
+                if (!command) return;
+
+                switch (command) {
+                    case 'help':
+                    case '?':
+                    case 'h':
+                        cmdHelp();
+                        break;
+                    case 'add':
+                    case 'todo':
+                    case 'new':
+                        cmdAdd(args);
+                        break;
+                    case 'list':
+                    case 'ls':
+                    case 'show':
+                        cmdList(args);
+                        break;
+                    case 'done':
+                    case 'complete':
+                    case 'check':
+                        cmdDone(args);
+                        break;
+                    case 'undo':
+                    case 'uncheck':
+                    case 'reopen':
+                        cmdUndo(args);
+                        break;
+                    case 'delete':
+                    case 'rm':
+                    case 'remove':
+                    case 'del':
+                        cmdDelete(args);
+                        break;
+                    case 'clear':
+                    case 'cls':
+                        cmdClear();
+                        break;
+                    case 'stats':
+                    case 'status':
+                        cmdStats();
+                        break;
+                    case 'priority':
+                    case 'pri':
+                    case 'set':
+                        cmdPriority(args);
+                        break;
+                    case 'filter':
+                        cmdFilter(args);
+                        break;
+                    case 'sort':
+                        cmdSort(args);
+                        break;
+                    case 'search':
+                    case 'find':
+                    case 'grep':
+                        cmdSearch(args);
+                        break;
+                    case 'export':
+                    case 'json':
+                        cmdExport();
+                        break;
+                    case 'reset':
+                    case 'nuke':
+                        cmdReset(args);
+                        break;
+                    case 'edit':
+                        cmdEdit(args);
+                        break;
+                    default:
+                        appendLine(`  ✗ Unknown command: "${command}"`, 'error');
+                        appendLine(`  Type "help" to see available commands.`, 'info');
+                }
+            }
+
+            // Command Implementations
+            function cmdHelp() {
+                appendEmptyLine();
+                appendLine('  ┌─────────────────────────────────────────────────┐', 'header');
+                appendLine('  │               AVAILABLE COMMANDS                 │', 'header');
+                appendLine('  ├─────────────────────────────────────────────────┤', 'header');
+                appendLine('  │  add <task>       Add a new task                 │', 'output');
+                appendLine('  │  list             Show all tasks                 │', 'output');
+                appendLine('  │  done <id>        Mark task as complete           │', 'output');
+                appendLine('  │  undo <id>        Mark task as incomplete         │', 'output');
+                appendLine('  │  delete <id>      Remove a task                  │', 'output');
+                appendLine('  │  edit <id> <text> Edit a task description        │', 'output');
+                appendLine('  │  priority <id> <lvl>  Set priority (high/med/low)│', 'output');
+                appendLine('  │  filter <all|active|done>  Filter task list      │', 'output');
+                appendLine('  │  sort <id|priority|date>   Sort task list        │', 'output');
+                appendLine('  │  search <term>    Search tasks                   │', 'output');
+                appendLine('  │  stats            Show task statistics           │', 'output');
+                appendLine('  │  export           Export tasks as JSON           │', 'output');
+                appendLine('  │  clear            Clear terminal screen          │', 'output');
+                appendLine('  │  reset            Delete ALL tasks (with confirm)│', 'output');
+                appendLine('  │  help             Show this help message         │', 'output');
+                appendLine('  └─────────────────────────────────────────────────┘', 'header');
+                appendEmptyLine();
+                appendLine('  Tips: Use ↑↓ arrows for command history. Task IDs are shown in the list.', 'info');
+                appendEmptyLine();
+            }
+
+            function cmdAdd(args) {
+                if (args.length === 0) {
+                    appendLine('  ✗ Usage: add <task description>', 'error');
+                    appendLine('  Example: add Buy groceries and milk', 'info');
+                    return;
+                }
+                const taskText = args.join(' ');
+                const task = {
+                    id: getNextId(),
+                    text: taskText,
+                    completed: false,
+                    priority: 'none',
+                    createdAt: new Date().toISOString(),
+                    completedAt: null,
+                };
+                tasks.push(task);
+                saveTasks();
+                appendLine(`  ✓ Task #${task.id} added: "${taskText}"`, 'success');
+            }
+
+            function cmdList(args) {
+                const list = getDisplayList();
+                if (list.length === 0) {
+                    appendEmptyLine();
+                    appendLine('  ┌──────────────────────────────────────┐', 'header');
+                    appendLine('  │         No tasks to display.         │', 'dim');
+                    appendLine('  │    Type "add <task>" to create one.  │', 'info');
+                    appendLine('  └──────────────────────────────────────┘', 'header');
+                    appendEmptyLine();
+                    return;
+                }
+
+                appendEmptyLine();
+                const filterLabel = currentFilter !== 'all' ? ` [filter: ${currentFilter}]` : '';
+                const sortLabel = currentSort !== 'id' ? ` [sort: ${currentSort}]` : '';
+                appendLine(`  ─────────────────────────────────────────────────────${filterLabel}${sortLabel}`,
+                    'separator');
+                appendLine('   ID   STATUS   PRIORITY    TASK', 'header');
+                appendLine('  ─────────────────────────────────────────────────────', 'separator');
+
+                list.forEach((task, index) => {
+                    const displayId = index + 1;
+                    const status = task.completed ? '[✓]' : '[ ]';
+                    const prioMap = { 'high': 'HIGH  ', 'medium': 'MED   ', 'low': 'LOW   ', 'none': '--    ' };
+                    const priority = prioMap[task.priority] || '--    ';
+                    const idStr = String(displayId).padStart(3, ' ');
+                    const lineClass = task.completed ? 'dim' : 'output';
+
+                    appendLine(`   ${idStr}   ${status}    ${priority}    ${task.text}`, lineClass);
+                });
+
+                appendLine('  ─────────────────────────────────────────────────────', 'separator');
+                const total = list.length;
+                const doneCount = list.filter(t => t.completed).length;
+                const activeCount = total - doneCount;
+                appendLine(`   ${total} tasks | ${doneCount} completed | ${activeCount} pending`, 'info');
+                appendEmptyLine();
+            }
+
+            function cmdDone(args) {
+                if (args.length === 0) {
+                    appendLine('  ✗ Usage: done <task-id>', 'error');
+                    return;
+                }
+                const displayId = parseInt(args[0], 10);
+                if (isNaN(displayId) || displayId < 1) {
+                    appendLine('  ✗ Invalid task ID. Use a number from the list.', 'error');
+                    return;
+                }
+                const task = getTaskByDisplayId(displayId);
+                if (!task) {
+                    appendLine(`  ✗ Task #${displayId} not found.`, 'error');
+                    return;
+                }
+                if (task.completed) {
+                    appendLine(`  ⚠ Task #${task.id} is already marked as done.`, 'warn');
+                    return;
+                }
+                task.completed = true;
+                task.completedAt = new Date().toISOString();
+                saveTasks();
+                appendLine(`  ✓ Task #${task.id} marked as done: "${task.text}"`, 'success');
+                appendLine(`  🎉 Great work! Keep it up!`, 'success');
+            }
+
+            function cmdUndo(args) {
+                if (args.length === 0) {
+                    appendLine('  ✗ Usage: undo <task-id>', 'error');
+                    return;
+                }
+                const displayId = parseInt(args[0], 10);
+                if (isNaN(displayId) || displayId < 1) {
+                    appendLine('  ✗ Invalid task ID.', 'error');
+                    return;
+                }
+                const task = getTaskByDisplayId(displayId);
+                if (!task) {
+                    appendLine(`  ✗ Task #${displayId} not found.`, 'error');
+                    return;
+                }
+                if (!task.completed) {
+                    appendLine(`  ⚠ Task #${task.id} is not marked as done.`, 'warn');
+                    return;
+                }
+                task.completed = false;
+                task.completedAt = null;
+                saveTasks();
+                appendLine(`  ↻ Task #${task.id} reopened: "${task.text}"`, 'success');
+            }
+
+            function cmdDelete(args) {
+                if (args.length === 0) {
+                    appendLine('  ✗ Usage: delete <task-id>', 'error');
+                    return;
+                }
+                const displayId = parseInt(args[0], 10);
+                if (isNaN(displayId) || displayId < 1) {
+                    appendLine('  ✗ Invalid task ID.', 'error');
+                    return;
+                }
+                const task = getTaskByDisplayId(displayId);
+                if (!task) {
+                    appendLine(`  ✗ Task #${displayId} not found.`, 'error');
+                    return;
+                }
+                const idx = getTaskIndexInFullList(task.id);
+                if (idx !== -1) {
+                    tasks.splice(idx, 1);
+                }
+                saveTasks();
+                appendLine(`  🗑 Task #${task.id} deleted: "${task.text}"`, 'success');
+            }
+
+            function cmdEdit(args) {
+                if (args.length < 2) {
+                    appendLine('  ✗ Usage: edit <task-id> <new description>', 'error');
+                    return;
+                }
+                const displayId = parseInt(args[0], 10);
+                if (isNaN(displayId) || displayId < 1) {
+                    appendLine('  ✗ Invalid task ID.', 'error');
+                    return;
+                }
+                const task = getTaskByDisplayId(displayId);
+                if (!task) {
+                    appendLine(`  ✗ Task #${displayId} not found.`, 'error');
+                    return;
+                }
+                const oldText = task.text;
+                task.text = args.slice(1).join(' ');
+                saveTasks();
+                appendLine(`  ✎ Task #${task.id} updated:`, 'success');
+                appendLine(`    Old: "${oldText}"`, 'dim');
+                appendLine(`    New: "${task.text}"`, 'output');
+            }
+
+            function cmdClear() {
+                clearOutput();
+                appendLine('  Terminal cleared.', 'info');
+            }
+
+            function cmdStats() {
+                const total = tasks.length;
+                const done = tasks.filter(t => t.completed).length;
+                const active = total - done;
+                const highPriority = tasks.filter(t => t.priority === 'high' && !t.completed).length;
+                const percentDone = total > 0 ? Math.round((done / total) * 100) : 0;
+
+                appendEmptyLine();
+                appendLine('  ╔══════════════════════════════╗', 'header');
+                appendLine('  ║       TASK STATISTICS        ║', 'header');
+                appendLine('  ╠══════════════════════════════╣', 'header');
+                appendLine(`  ║  Total tasks:      ${String(total).padStart(6)}     ║`, 'output');
+                appendLine(`  ║  Completed:        ${String(done).padStart(6)}     ║`, 'success');
+                appendLine(`  ║  Pending:          ${String(active).padStart(6)}     ║`, 'warn');
+                appendLine(`  ║  High priority:    ${String(highPriority).padStart(6)}     ║`, 'error');
+                appendLine(`  ║  Completion rate:  ${String(percentDone + '%').padStart(6)}     ║`, 'info');
+                appendLine('  ╚══════════════════════════════╝', 'header');
+
+                // Progress bar
+                if (total > 0) {
+                    const barWidth = 30;
+                    const filled = Math.round((done / total) * barWidth);
+                    const empty = barWidth - filled;
+                    const bar = '█'.repeat(filled) + '░'.repeat(empty);
+                    appendLine(`  Progress: [${bar}] ${percentDone}%`, 'output');
+                }
+                appendEmptyLine();
+            }
+
+            function cmdPriority(args) {
+                if (args.length < 2) {
+                    appendLine('  ✗ Usage: priority <task-id> <high|medium|low|none>', 'error');
+                    appendLine('  Shortcuts: high, med, low', 'info');
+                    return;
+                }
+                const displayId = parseInt(args[0], 10);
+                if (isNaN(displayId) || displayId < 1) {
+                    appendLine('  ✗ Invalid task ID.', 'error');
+                    return;
+                }
+                const task = getTaskByDisplayId(displayId);
+                if (!task) {
+                    appendLine(`  ✗ Task #${displayId} not found.`, 'error');
+                    return;
+                }
+                const level = args[1].toLowerCase();
+                const validLevels = ['high', 'medium', 'med', 'low', 'none'];
+                let normalizedLevel = level;
+                if (level === 'med') normalizedLevel = 'medium';
+
+                if (!validLevels.includes(level) && level !== 'med') {
+                    appendLine('  ✗ Invalid priority. Use: high, medium (or med), low, none', 'error');
+                    return;
+                }
+                task.priority = normalizedLevel;
+                saveTasks();
+                const prioLabel = normalizedLevel === 'none' ? 'cleared' : `set to ${normalizedLevel.toUpperCase()}`;
+                appendLine(`  ✓ Priority ${prioLabel} for task #${task.id}: "${task.text}"`, 'success');
+            }
+
+            function cmdFilter(args) {
+                if (args.length === 0) {
+                    appendLine(`  Current filter: "${currentFilter}"`, 'info');
+                    appendLine('  Usage: filter <all|active|done>', 'info');
+                    return;
+                }
+                const filter = args[0].toLowerCase();
+                if (!['all', 'active', 'done'].includes(filter)) {
+                    appendLine('  ✗ Invalid filter. Use: all, active, done', 'error');
+                    return;
+                }
+                currentFilter = filter;
+                appendLine(`  ✓ Filter set to: "${currentFilter}"`, 'success');
+                cmdList([]);
+            }
+
+            function cmdSort(args) {
+                if (args.length === 0) {
+                    appendLine(`  Current sort: "${currentSort}"`, 'info');
+                    appendLine('  Usage: sort <id|priority|date>', 'info');
+                    return;
+                }
+                const sort = args[0].toLowerCase();
+                if (!['id', 'priority', 'date'].includes(sort)) {
+                    appendLine('  ✗ Invalid sort. Use: id, priority, date', 'error');
+                    return;
+                }
+                currentSort = sort;
+                appendLine(`  ✓ Sort set to: "${currentSort}"`, 'success');
+                cmdList([]);
+            }
+
+            function cmdSearch(args) {
+                if (args.length === 0) {
+                    appendLine('  ✗ Usage: search <term>', 'error');
+                    return;
+                }
+                const term = args.join(' ').toLowerCase();
+                const results = tasks.filter(t => t.text.toLowerCase().includes(term));
+                if (results.length === 0) {
+                    appendLine(`  No tasks found matching: "${term}"`, 'warn');
+                    return;
+                }
+                appendEmptyLine();
+                appendLine(`  Search results for: "${term}" (${results.length} found)`, 'info');
+                appendLine('  ─────────────────────────────────────────', 'separator');
+                results.forEach(t => {
+                    const status = t.completed ? '[✓]' : '[ ]';
+                    const lineClass = t.completed ? 'dim' : 'output';
+                    appendLine(`   #${t.id} ${status}  ${t.text}`, lineClass);
+                });
+                appendLine('  ─────────────────────────────────────────', 'separator');
+                appendEmptyLine();
+            }
+
+            function cmdExport() {
+                const data = {
+                    exportedAt: new Date().toISOString(),
+                    totalTasks: tasks.length,
+                    filter: currentFilter,
+                    sort: currentSort,
+                    tasks: tasks,
+                };
+                const json = JSON.stringify(data, null, 2);
+                appendEmptyLine();
+                appendLine('  ┌─── EXPORTED JSON ──────────────────────────────', 'header');
+                json.split('\n').forEach(line => {
+                    appendLine(`  │ ${line}`, 'output');
+                });
+                appendLine('  └────────────────────────────────────────────────', 'header');
+                appendLine('  ✓ Copy the JSON above to save your tasks.', 'success');
+                appendEmptyLine();
+
+                // Also copy to clipboard
+                try {
+                    navigator.clipboard.writeText(json).then(() => {
+                        appendLine('  📋 JSON copied to clipboard!', 'success');
+                    }).catch(() => {});
+                } catch (e) {}
+            }
+
+            function cmdReset(args) {
+                if (args.length > 0 && args[0].toLowerCase() === '--force') {
+                    const count = tasks.length;
+                    tasks = [];
+                    taskIdCounter = 0;
+                    currentFilter = 'all';
+                    currentSort = 'id';
+                    saveTasks();
+                    clearOutput();
+                    appendLine(`  💥 All ${count} tasks have been deleted. Fresh start!`, 'warn');
+                    showWelcome();
+                    return;
+                }
+                appendLine('  ⚠ WARNING: This will delete ALL tasks permanently!', 'error');
+                appendLine('  To confirm, type:  reset --force', 'warn');
+                appendLine(`  Current task count: ${tasks.length}`, 'info');
+            }
+
+            // Handle Input Submission
+            function handleSubmit() {
+                const input = inputField.value;
+                // Echo the command
+                appendLine(`[user@todo ~]$ ${input}`, 'cmd');
+                // Add to history
+                if (input.trim()) {
+                    commandHistory.push(input);
+                    if (commandHistory.length > MAX_HISTORY) commandHistory.shift();
+                    historyIndex = commandHistory.length;
+                }
+                // Process
+                processCommand(input);
+                // Clear input
+                inputField.value = '';
+                // Hide cursor indicator when input is empty
+                updateCursorIndicator();
+            }
+
+            function updateCursorIndicator() {
+                if (inputField.value.length > 0) {
+                    cursorIndicator.style.opacity = '0';
+                } else {
+                    cursorIndicator.style.opacity = '';
+                }
+            }
+
+            // Event Listeners
+            inputField.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSubmit();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (commandHistory.length > 0) {
+                        if (historyIndex > 0) {
+                            historyIndex--;
+                        }
+                        inputField.value = commandHistory[historyIndex] || '';
+                        // Move cursor to end
+                        inputField.setSelectionRange(inputField.value.length, inputField.value.length);
+                        updateCursorIndicator();
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (historyIndex < commandHistory.length) {
+                        historyIndex++;
+                    }
+                    if (historyIndex >= commandHistory.length) {
+                        inputField.value = '';
+                        historyIndex = commandHistory.length;
+                    } else {
+                        inputField.value = commandHistory[historyIndex] || '';
+                    }
+                    inputField.setSelectionRange(inputField.value.length, inputField.value.length);
+                    updateCursorIndicator();
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    // Simple autocomplete
+                    const val = inputField.value.trim().toLowerCase();
+                    const commands = [
+                        'add', 'list', 'done', 'undo', 'delete', 'edit',
+                        'priority', 'filter', 'sort', 'search', 'stats',
+                        'export', 'clear', 'reset', 'help'
+                    ];
+                    const matching = commands.filter(c => c.startsWith(val));
+                    if (matching.length === 1) {
+                        inputField.value = matching[0] + ' ';
+                        inputField.setSelectionRange(inputField.value.length, inputField.value.length);
+                        updateCursorIndicator();
+                    } else if (matching.length > 1) {
+                        appendLine(`[user@todo ~]$ ${inputField.value}`, 'cmd');
+                        appendLine(`  ${matching.join('  |  ')}`, 'info');
+                        inputField.value = '';
+                        updateCursorIndicator();
+                    }
+                }
+            });
+
+            inputField.addEventListener('input', updateCursorIndicator);
+
+            // Click anywhere on screen to focus input
+            screen.addEventListener('click', function(e) {
+                if (e.target !== inputField) {
+                    inputField.focus();
+                }
+            });
+
+            // Handle paste
+            inputField.addEventListener('paste', function() {
+                setTimeout(updateCursorIndicator, 10);
+            });
+
+            // Initialization
+            function init() {
+                loadTasks();
+                showWelcome();
+                if (tasks.length > 0) {
+                    appendLine(`  📋 Loaded ${tasks.length} saved task(s) from storage.`, 'info');
+                    const doneCount = tasks.filter(t => t.completed).length;
+                    const activeCount = tasks.length - doneCount;
+                    appendLine(`     ${activeCount} pending | ${doneCount} completed`, 'info');
+                    appendEmptyLine();
+                }
+                inputField.focus();
+                updateCursorIndicator();
+            }
+
+            // Start the app
+            init();
+
+            // Log for debugging
+            console.log('🖥️  Terminal TODO v2.0 initialized');
+            console.log(`   ${tasks.length} tasks loaded from localStorage`);
+            console.log('   Type "help" in the terminal to get started.');
+        })();
+    </script>
+</body>
+</html>
